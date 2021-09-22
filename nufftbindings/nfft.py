@@ -8,10 +8,18 @@ class Nufft(baseNUFFT):
     def _set_dims(self):
         xx = np.arange(self.nx)-self.nx/2.
         xy = np.arange(self.ny)-self.ny/2.
-        self.XX, self.XY = np.meshgrid(xx, xy)
+        if self.ndim==2:
+            self.XX, self.XY = np.meshgrid(xx, xy)
+        if self.ndim==3:
+            xz = np.arange(self.nz)-self.nz/2.
+            self.XX, self.XY, self.XZ = np.meshgrid(xx, xy, xz)
+            self.XZ=self.XZ.T
         self.XX=self.XX.T
         self.XY=self.XY.T
-        self.plan = NFFT([self.nx, self.ny], self.K)
+        if self.ndim==2:
+            self.plan = NFFT([self.nx, self.ny], self.K)
+        elif self.ndim==3:
+            self.plan = NFFT([self.nx, self.ny, self.nz], self.K)
 
     def precompute(self, xi):
         self.plan.x = (xi.data.cpu().numpy()/(2*np.pi)+0.5)%1-0.5
@@ -21,7 +29,8 @@ class Nufft(baseNUFFT):
         self.plan.f_hat = f
         y = self.plan.trafo()
         return y
-    def _forward_simple(self, f, xi):
+
+    def _forward_simple2D(self, f, xi):
         self.test_xi(xi)
         fnp = f[:,:,0].data.cpu().numpy() + 1j*f[:,:,1].data.cpu().numpy()
 
@@ -32,7 +41,7 @@ class Nufft(baseNUFFT):
         y[:,0] = torch.tensor(ynp.real, dtype=self.torch_dtype, device=self.device)
         y[:,1] = torch.tensor(ynp.imag, dtype=self.torch_dtype, device=self.device)
         return y
-    def _adjoint_simple(self, y, xi):
+    def _adjoint_simple2D(self, y, xi):
         self.test_xi(xi)
         ynp = y[:,0].data.cpu().numpy() + 1j*y[:,1].data.cpu().numpy()
 
@@ -43,7 +52,7 @@ class Nufft(baseNUFFT):
         f[:,:,0] = torch.tensor(fnp.real, dtype=self.torch_dtype, device=self.device)
         f[:,:,1] = torch.tensor(fnp.imag, dtype=self.torch_dtype, device=self.device)
         return f
-    def _backward_forward_simple(self, f, g, xi):
+    def _backward_forward_simple2D(self, f, g, xi):
         self.test_xi(xi)
         gnp = g[:,0].data.cpu().numpy() + 1j*g[:,1].data.cpu().numpy()
         fnp = f[:,:,0].data.cpu().numpy() + 1j*f[:,:,1].data.cpu().numpy()
@@ -59,7 +68,7 @@ class Nufft(baseNUFFT):
 
         grad = torch.tensor(gradnp, dtype=self.torch_dtype, device=self.device)
         return grad
-    def _backward_adjoint_simple(self, y, g, xi):
+    def _backward_adjoint_simple2D(self, y, g, xi):
         self.test_xi(xi)
         gnp = g[:,:,0].data.cpu().numpy() + 1j*g[:,:,1].data.cpu().numpy()
         ynp = y[:,0].data.cpu().numpy() + 1j*y[:,1].data.cpu().numpy()
@@ -76,7 +85,7 @@ class Nufft(baseNUFFT):
         grad = torch.tensor(gradnp, dtype=self.torch_dtype, device=self.device)
         return grad
 
-    def forward(self, f, xi):
+    def _forward2D(self, f, xi):
         self.test_xi(xi)
         ndim = len(f.shape)
         if ndim==4:
@@ -92,10 +101,10 @@ class Nufft(baseNUFFT):
                 y[n,:,1] = torch.tensor(ynp.imag, dtype=self.torch_dtype, device=self.device)
             return y
         elif ndim==3:
-            return self._forward_simple(f, xi)
+            return self._forward_simple2D(f, xi)
         else:
             raise Exception("Error: f should have 3 or 4 dimensions (batch mode)")
-    def adjoint(self, y, xi):
+    def _adjoint2D(self, y, xi):
         self.test_xi(xi)
         ndim = len(y.shape)
         if ndim==3:
@@ -111,10 +120,10 @@ class Nufft(baseNUFFT):
                 f[n,:,:,1] = torch.tensor(fnp.imag, dtype=self.torch_dtype, device=self.device)
             return f
         elif ndim==2:
-            return self._adjoint_simple(y, xi)
+            return self._adjoint_simple2D(y, xi)
         else:
             raise Exception("Error: y should have 2 or 3 dimensions (batch mode)")
-    def backward_forward(self, f, g, xi):
+    def _backward_forward2D(self, f, g, xi):
         self.test_xi(xi)
         ndim = len(f.shape)
         if ndim==4:
@@ -136,10 +145,10 @@ class Nufft(baseNUFFT):
                 grad += torch.tensor(gradnp, dtype=self.torch_dtype, device=self.device)
             return grad
         elif ndim==3:
-            return self._backward_forward_simple(f, g, xi)
+            return self._backward_forward_simple2D(f, g, xi)
         else:
             raise Exception("Error: f should have 3 or 4 dimensions (batch mode)")
-    def backward_adjoint(self, y, g, xi):
+    def _backward_adjoint2D(self, y, g, xi):
         self.test_xi(xi)
         ndim = len(y.shape)
         if ndim==3:
@@ -161,7 +170,163 @@ class Nufft(baseNUFFT):
                 grad += torch.tensor(gradnp, dtype=self.torch_dtype, device=self.device)
             return grad
         elif ndim==2:
-            return self._backward_adjoint_simple(y, g, xi)
+            return self._backward_adjoint_simple2D(y, g, xi)
+        else:
+            raise Exception("Error: y should have 2 or 3 dimensions (batch mode)")
+
+    def _forward_simple3D(self, f, xi):
+        self.test_xi(xi)
+        fnp = f[:,:,:,0].data.cpu().numpy() + 1j*f[:,:,:,1].data.cpu().numpy()
+
+        self.plan.f_hat = fnp
+        ynp = self.plan.trafo()
+
+        y = torch.zeros(self.K, 2, dtype=self.torch_dtype, device=self.device)
+        y[:,0] = torch.tensor(ynp.real, dtype=self.torch_dtype, device=self.device)
+        y[:,1] = torch.tensor(ynp.imag, dtype=self.torch_dtype, device=self.device)
+        return y
+    def _adjoint_simple_3D(self, y, xi):
+        self.test_xi(xi)
+        ynp = y[:,0].data.cpu().numpy() + 1j*y[:,1].data.cpu().numpy()
+
+        self.plan.f = ynp
+        fnp = self.plan.adjoint()
+
+        f = torch.zeros(self.nx, self.ny, self.nz, 2, dtype=self.torch_dtype, device=self.device)
+        f[:,:,:,0] = torch.tensor(fnp.real, dtype=self.torch_dtype, device=self.device)
+        f[:,:,:,1] = torch.tensor(fnp.imag, dtype=self.torch_dtype, device=self.device)
+        return f
+    def _backward_forward_simple3D(self, f, g, xi):
+        self.test_xi(xi)
+        gnp = g[:,0].data.cpu().numpy() + 1j*g[:,1].data.cpu().numpy()
+        fnp = f[:,:,:,0].data.cpu().numpy() + 1j*f[:,:,:,1].data.cpu().numpy()
+
+        vec_fx = np.multiply(self.XX, fnp)
+        vec_fy = np.multiply(self.XY, fnp)
+        vec_fz = np.multiply(self.XZ, fnp)
+
+        gradnp = np.zeros(xi.shape)
+        tmp = self._forward_np(vec_fx)
+        gradnp[:,0] = np.multiply(tmp.imag, gnp.real) - np.multiply(tmp.real, gnp.imag)
+        tmp = self._forward_np(vec_fy)
+        gradnp[:,1] = np.multiply(tmp.imag, gnp.real) - np.multiply(tmp.real, gnp.imag)
+        tmp = self._forward_np(vec_fz)
+        gradnp[:,2] = np.multiply(tmp.imag, gnp.real) - np.multiply(tmp.real, gnp.imag)
+
+        grad = torch.tensor(gradnp, dtype=self.torch_dtype, device=self.device)
+        return grad
+    def _backward_adjoint_simple3D(self, y, g, xi):
+        self.test_xi(xi)
+        gnp = g[:,:,:,0].data.cpu().numpy() + 1j*g[:,:,:,1].data.cpu().numpy()
+        ynp = y[:,0].data.cpu().numpy() + 1j*y[:,1].data.cpu().numpy()
+
+        vecx_grad_output = np.multiply(self.XX, gnp)
+        vecy_grad_output = np.multiply(self.XY, gnp)
+        vecz_grad_output = np.multiply(self.XZ, gnp)
+
+        gradnp = np.zeros(xi.shape)
+        tmp = self._forward_np(vecx_grad_output)
+        gradnp[:,0] = np.multiply(tmp.imag, ynp.real) - np.multiply(tmp.real, ynp.imag)
+        tmp = self._forward_np(vecy_grad_output)
+        gradnp[:,1] = np.multiply(tmp.imag, ynp.real) - np.multiply(tmp.real, ynp.imag)
+        tmp = self._forward_np(vecz_grad_output)
+        gradnp[:,2] = np.multiply(tmp.imag, ynp.real) - np.multiply(tmp.real, ynp.imag)
+
+        grad = torch.tensor(gradnp, dtype=self.torch_dtype, device=self.device)
+        return grad
+
+    def _forward3D(self, f, xi):
+        self.test_xi(xi)
+        ndim = len(f.shape)
+        if ndim==5:
+            Nbatch = f.shape[0]
+            y = torch.zeros(Nbatch, self.K, 2, dtype=self.torch_dtype, device=self.device)
+            for n in range(Nbatch):
+                fnp = f[n,:,:,:,0].data.cpu().numpy() + 1j*f[n,:,:,:,1].data.cpu().numpy()
+
+                self.plan.f_hat = fnp
+                ynp = self.plan.trafo()
+
+                y[n,:,0] = torch.tensor(ynp.real, dtype=self.torch_dtype, device=self.device)
+                y[n,:,1] = torch.tensor(ynp.imag, dtype=self.torch_dtype, device=self.device)
+            return y
+        elif ndim==4:
+            return self._forward_simple3D(f, xi)
+        else:
+            raise Exception("Error: f should have 4 or 5 dimensions (batch mode)")
+    def _adjoint3D(self, y, xi):
+        self.test_xi(xi)
+        ndim = len(y.shape)
+        if ndim==3:
+            Nbatch = y.shape[0]
+            f = torch.zeros(Nbatch, self.nx, self.ny, self.nz, 2, dtype=self.torch_dtype, device=self.device)
+            for n in range(Nbatch):
+                ynp = y[n,:,0].data.cpu().numpy() + 1j*y[n,:,1].data.cpu().numpy()
+
+                self.plan.f = ynp
+                fnp = self.plan.adjoint()
+
+                f[n,:,:,:,0] = torch.tensor(fnp.real, dtype=self.torch_dtype, device=self.device)
+                f[n,:,:,:,1] = torch.tensor(fnp.imag, dtype=self.torch_dtype, device=self.device)
+            return f
+        elif ndim==2:
+            return self._adjoint_simple3D(y, xi)
+        else:
+            raise Exception("Error: y should have 2 or 3 dimensions (batch mode)")
+    def _backward_forward3D(self, f, g, xi):
+        self.test_xi(xi)
+        ndim = len(f.shape)
+        if ndim==5:
+            Nbatch = f.shape[0]
+            gradnp = np.zeros(xi.shape)
+            grad = torch.zeros(self.K, 3, dtype=self.torch_dtype, device=self.device)
+            for n in range(Nbatch):
+                gnp = g[n,:,0].data.cpu().numpy() + 1j*g[n,:,1].data.cpu().numpy()
+                fnp = f[n,:,:,:,0].data.cpu().numpy() + 1j*f[n,:,:,:,1].data.cpu().numpy()
+
+                vec_fx = np.multiply(self.XX, fnp)
+                vec_fy = np.multiply(self.XY, fnp)
+                vec_fz = np.multiply(self.XZ, fnp)
+
+                tmp = self._forward_np(vec_fx)
+                gradnp[:,0] = np.multiply(tmp.imag, gnp.real) - np.multiply(tmp.real, gnp.imag)
+                tmp = self._forward_np(vec_fy)
+                gradnp[:,1] = np.multiply(tmp.imag, gnp.real) - np.multiply(tmp.real, gnp.imag)
+                tmp = self._forward_np(vec_fz)
+                gradnp[:,2] = np.multiply(tmp.imag, gnp.real) - np.multiply(tmp.real, gnp.imag)
+
+                grad += torch.tensor(gradnp, dtype=self.torch_dtype, device=self.device)
+            return grad
+        elif ndim==4:
+            return self._backward_forward_simple3D(f, g, xi)
+        else:
+            raise Exception("Error: f should have 3 or 4 dimensions (batch mode)")
+    def _backward_adjoint3D(self, y, g, xi):
+        self.test_xi(xi)
+        ndim = len(y.shape)
+        if ndim==3:
+            Nbatch = y.shape[0]
+            gradnp = np.zeros(xi.shape)
+            grad = torch.zeros(self.K, 3, dtype=self.torch_dtype, device=self.device)
+            for n in range(Nbatch):
+                gnp = g[n,:,:,:,0].data.cpu().numpy() + 1j*g[n,:,:,:,1].data.cpu().numpy()
+                ynp = y[n,:,0].data.cpu().numpy() + 1j*y[n,:,1].data.cpu().numpy()
+
+                vecx_grad_output = np.multiply(self.XX, gnp)
+                vecy_grad_output = np.multiply(self.XY, gnp)
+                vecz_grad_output = np.multiply(self.XZ, gnp)
+
+                tmp = self._forward_np(vecx_grad_output)
+                gradnp[:,0] = np.multiply(tmp.imag, ynp.real) - np.multiply(tmp.real, ynp.imag)
+                tmp = self._forward_np(vecy_grad_output)
+                gradnp[:,1] = np.multiply(tmp.imag, ynp.real) - np.multiply(tmp.real, ynp.imag)
+                tmp = self._forward_np(vecz_grad_output)
+                gradnp[:,2] = np.multiply(tmp.imag, ynp.real) - np.multiply(tmp.real, ynp.imag)
+
+                grad += torch.tensor(gradnp, dtype=self.torch_dtype, device=self.device)
+            return grad
+        elif ndim==2:
+            return self._backward_adjoint_simple3D(y, g, xi)
         else:
             raise Exception("Error: y should have 2 or 3 dimensions (batch mode)")
 

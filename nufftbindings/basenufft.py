@@ -5,8 +5,8 @@ class baseNUFFT:
     def set_dims(self, K, dims, device, Nb=1, doublePrecision=False):
         self.K = K
         self.ndim = len(dims)
-        if self.ndim!=2:
-            raise Exception("Only 2D NUFFT is available yet")
+        # if self.ndim!=2:
+        #     raise Exception("Only 2D NUFFT is available yet")
         self.dims = dims
         self.device = device
         self.Nbatch = Nb
@@ -21,9 +21,12 @@ class baseNUFFT:
 
         self.precomputedTrig = False
 
+        if self.ndim not in [2, 3]:
+            raise Exception("Only NUFFT in dimension 2 and 3 are implemented")
+
         self.nx = self.dims[0]
         self.xx = torch.arange(self.nx, device=self.device, dtype=self.torch_dtype)-self.nx/2.
-        if self.ndim==2:
+        if self.ndim>=2:
             self.ny = self.dims[1]
             self.xy = torch.arange(self.ny, device=self.device, dtype=self.torch_dtype)-self.ny/2.
         if self.ndim==3:
@@ -39,3 +42,23 @@ class baseNUFFT:
     def test_f(self, f):
         if f.shape[0] != self.Nbatch and f.shape[0]!=1:
             raise Exception("The batch size does not correspond to the one indicated in set_dims. Expected the first dimension to be of size "+str(self.Nbatch)+" but got shape[0]="+str(f.shape[0]))
+    def forward(self, f, xi):
+        if self.ndim==2:
+            return self._forward2D(f, xi)
+        elif self.ndim==3:
+            return self._forward3D(f, xi)
+    def adjoint(self, y, xi):
+        if self.ndim==2:
+            return self._adjoint2D(y, xi)
+        elif self.ndim==3:
+            return self._adjoint3D(y, xi)
+    def backward_forward(self, f, g, xi):
+        if self.ndim==2:
+            return self._backward_forward2D(f, g, xi)
+        elif self.ndim==3:
+            return self._backward_forward3D(f, g, xi)
+    def backward_adjoint(self, y, g, xi):
+        if self.ndim==2:
+            return self._backward_adjoint2D(y, g, xi)
+        elif self.ndim==3:
+            return self._backward_adjoint3D(y, g, xi)
