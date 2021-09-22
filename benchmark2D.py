@@ -1,3 +1,6 @@
+# Author: Alban Gossard
+# Last modification: 2021/22/09
+
 import torch, time
 import numpy as np
 import nufftbindings.kbnufft as nufftkb

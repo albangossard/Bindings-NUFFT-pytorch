@@ -1,3 +1,6 @@
+# Author: Alban Gossard
+# Last modification: 2021/22/09
+
 import torch
 import torchkbnufft as tkbn
 from nufftbindings.basenufft import *

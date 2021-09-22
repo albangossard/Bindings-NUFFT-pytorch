@@ -1,3 +1,6 @@
+# Author: Alban Gossard
+# Last modification: 2021/22/09
+
 import torch
 import numpy as np
 
@@ -5,8 +8,6 @@ class baseNUFFT:
     def set_dims(self, K, dims, device, Nb=1, doublePrecision=False):
         self.K = K
         self.ndim = len(dims)
-        # if self.ndim!=2:
-        #     raise Exception("Only 2D NUFFT is available yet")
         self.dims = dims
         self.device = device
         self.Nbatch = Nb

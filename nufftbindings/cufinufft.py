@@ -1,3 +1,6 @@
+# Author: Alban Gossard
+# Last modification: 2021/22/09
+
 import numpy as np
 import torch
 import pycuda.autoinit
@@ -5,7 +8,7 @@ from pycuda.gpuarray import to_gpu
 from cufinufft import cufinufft
 from nufftbindings.basenufft import *
 
-# Note: in order for cuFINUFFT to work with pytorch tensor (and not GPUArray from pycuda), we have to do the following changes in the method execute in lib/python3.XX/site-packages/cufinufft/cufinufft.py:
+# Note: in order for cuFINUFFT to work with pytorch tensor (and not GPUArray from pycuda), we have to do the following changes in the 'execute' method in lib/python3.XX/site-packages/cufinufft/cufinufft.py:
 # Comment the test ```if not c.dtype == fk.dtype == self.complex_dtype:```
 # Replace c.ptr by c and fk.ptr by fk in ier = self._exec_plan(c.ptr, fk.ptr, self.plan)
 

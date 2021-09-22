@@ -1,6 +1,8 @@
+# Author: Alban Gossard
+# Last modification: 2021/22/09
+
 import torch
 import numpy as np
-# import nufftbindings.cufinufft as nufft
 import nufftbindings.pykeops as nufft
 
 nx = ny = 320

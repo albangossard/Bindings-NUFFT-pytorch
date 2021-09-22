@@ -1,3 +1,6 @@
+# Author: Alban Gossard
+# Last modification: 2021/22/09
+
 import numpy as np
 import torch
 from pynfft.nfft import NFFT

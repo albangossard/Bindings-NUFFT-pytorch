@@ -71,3 +71,7 @@ by
 ```python
 ier = self._exec_plan(c, fk, self.plan)
 ```
+
+## License
+
+See the [LICENSE file](https://github.com/albangossard/Bindings-NUFFT-pytorch)
