@@ -36,6 +36,8 @@ class baseNUFFT:
 
         self._set_dims()
     def test_xi(self, xi):
+      if not torch.allclose(xi, self.xiprecomputed):
+          raise Exception("The vector of positions xi given in the precompute method is not the same as the one here.")
       if not xi.shape == (self.K, self.ndim):
           raise Exception("xi does not have shape "+str((self.K, self.ndim))+ '!='+ str(xi.shape))
       elif not self.precomputedTrig:

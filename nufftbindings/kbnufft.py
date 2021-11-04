@@ -23,6 +23,7 @@ class Nufft(baseNUFFT):
             self.nufft_adj_ob = tkbn.KbNufftAdjoint((self.nx,self.ny,self.nz)).to(self.device)
 
     def precompute(self, xi):
+        self.xiprecomputed = xi.clone()
         self.precomputedTrig = True
 
     def _forward2D(self, f, xi):

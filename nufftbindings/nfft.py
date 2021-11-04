@@ -27,6 +27,7 @@ class Nufft(baseNUFFT):
     def precompute(self, xi):
         self.plan.x = (xi.data.cpu().numpy()/(2*np.pi)+0.5)%1-0.5
         self.plan.precompute()
+        self.xiprecomputed = xi.clone()
         self.precomputedTrig = True
     def _forward_np(self, f):
         self.plan.f_hat = f

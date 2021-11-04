@@ -41,6 +41,8 @@ class Nufft(baseNUFFT):
         self.cos_coupling = coupling.cos()
         self.sin_coupling = coupling.sin()
 
+        self.xiprecomputed = xi.clone()
+
         self.precomputedTrig = True
 
     def _forward2D(self, f, xi):

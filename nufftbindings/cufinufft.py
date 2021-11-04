@@ -64,6 +64,8 @@ class Nufft(baseNUFFT):
             self.plan_forward_batch.set_pts(to_gpu(xinp[:,0].astype(self.np_dtype)), to_gpu(xinp[:,1].astype(self.np_dtype)), to_gpu(xinp[:,2].astype(self.np_dtype)))
             self.plan_adjoint_batch.set_pts(to_gpu(xinp[:,0].astype(self.np_dtype)), to_gpu(xinp[:,1].astype(self.np_dtype)), to_gpu(xinp[:,2].astype(self.np_dtype)))
 
+        self.xiprecomputed = xi.clone()
+
         self.precomputedTrig = True
 
     def _forward2D(self, f, xi):
