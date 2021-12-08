@@ -36,30 +36,51 @@ class Nufft(baseNUFFT):
 
     def _forward_simple2D(self, f, xi):
         self.test_xi(xi)
-        fnp = f[:,:,0].data.cpu().numpy() + 1j*f[:,:,1].data.cpu().numpy()
+        iscpx = f.is_complex()
+        if iscpx:
+            fnp = f.data.cpu().numpy()
+        else:
+            fnp = f[:,:,0].data.cpu().numpy() + 1j*f[:,:,1].data.cpu().numpy()
 
         self.plan.f_hat = fnp
         ynp = self.plan.trafo()
 
-        y = torch.zeros(self.K, 2, dtype=self.torch_dtype, device=self.device)
-        y[:,0] = torch.tensor(ynp.real, dtype=self.torch_dtype, device=self.device)
-        y[:,1] = torch.tensor(ynp.imag, dtype=self.torch_dtype, device=self.device)
+        if iscpx:
+            y = torch.zeros(self.K, dtype=self.torch_cpxdtype, device=self.device)
+            y[:] = torch.tensor(ynp, dtype=self.torch_cpxdtype, device=self.device)
+        else:
+            y = torch.zeros(self.K, 2, dtype=self.torch_dtype, device=self.device)
+            y[:,0] = torch.tensor(ynp.real, dtype=self.torch_dtype, device=self.device)
+            y[:,1] = torch.tensor(ynp.imag, dtype=self.torch_dtype, device=self.device)
         return y
     def _adjoint_simple2D(self, y, xi):
         self.test_xi(xi)
-        ynp = y[:,0].data.cpu().numpy() + 1j*y[:,1].data.cpu().numpy()
+        iscpx = y.is_complex()
+        if iscpx:
+            ynp = y.data.cpu().numpy()
+        else:
+            ynp = y[:,0].data.cpu().numpy() + 1j*y[:,1].data.cpu().numpy()
 
         self.plan.f = ynp
         fnp = self.plan.adjoint()
 
-        f = torch.zeros(self.nx, self.ny, 2, dtype=self.torch_dtype, device=self.device)
-        f[:,:,0] = torch.tensor(fnp.real, dtype=self.torch_dtype, device=self.device)
-        f[:,:,1] = torch.tensor(fnp.imag, dtype=self.torch_dtype, device=self.device)
+        if iscpx:
+            f = torch.zeros(self.nx, self.ny, dtype=self.torch_cpxdtype, device=self.device)
+            f[:,:] = torch.tensor(fnp, dtype=self.torch_cpxdtype, device=self.device)
+        else:
+            f = torch.zeros(self.nx, self.ny, 2, dtype=self.torch_dtype, device=self.device)
+            f[:,:,0] = torch.tensor(fnp.real, dtype=self.torch_dtype, device=self.device)
+            f[:,:,1] = torch.tensor(fnp.imag, dtype=self.torch_dtype, device=self.device)
         return f
     def _backward_forward_simple2D(self, f, g, xi):
         self.test_xi(xi)
-        gnp = g[:,0].data.cpu().numpy() + 1j*g[:,1].data.cpu().numpy()
-        fnp = f[:,:,0].data.cpu().numpy() + 1j*f[:,:,1].data.cpu().numpy()
+        iscpx = f.is_complex()
+        if iscpx:
+            gnp = g.data.cpu().numpy()
+            fnp = f.data.cpu().numpy()
+        else:
+            gnp = g[:,0].data.cpu().numpy() + 1j*g[:,1].data.cpu().numpy()
+            fnp = f[:,:,0].data.cpu().numpy() + 1j*f[:,:,1].data.cpu().numpy()
 
         vec_fx = np.multiply(self.XX, fnp)
         vec_fy = np.multiply(self.XY, fnp)
@@ -74,8 +95,13 @@ class Nufft(baseNUFFT):
         return grad
     def _backward_adjoint_simple2D(self, y, g, xi):
         self.test_xi(xi)
-        gnp = g[:,:,0].data.cpu().numpy() + 1j*g[:,:,1].data.cpu().numpy()
-        ynp = y[:,0].data.cpu().numpy() + 1j*y[:,1].data.cpu().numpy()
+        iscpx = y.is_complex()
+        if iscpx:
+            gnp = g.data.cpu().numpy()
+            ynp = y.data.cpu().numpy()
+        else:
+            gnp = g[:,:,0].data.cpu().numpy() + 1j*g[:,:,1].data.cpu().numpy()
+            ynp = y[:,0].data.cpu().numpy() + 1j*y[:,1].data.cpu().numpy()
 
         vecx_grad_output = np.multiply(self.XX, gnp)
         vecy_grad_output = np.multiply(self.XY, gnp)
@@ -92,51 +118,76 @@ class Nufft(baseNUFFT):
     def _forward2D(self, f, xi):
         self.test_xi(xi)
         ndim = len(f.shape)
-        if ndim==4:
+        iscpx = f.is_complex()
+        if ndim==4 and not iscpx or ndim==3 and iscpx:
             Nbatch = f.shape[0]
-            y = torch.zeros(Nbatch, self.K, 2, dtype=self.torch_dtype, device=self.device)
+            if iscpx:
+                y = torch.zeros(Nbatch, self.K, dtype=self.torch_cpxdtype, device=self.device)
+            else:
+                y = torch.zeros(Nbatch, self.K, 2, dtype=self.torch_dtype, device=self.device)
             for n in range(Nbatch):
-                fnp = f[n,:,:,0].data.cpu().numpy() + 1j*f[n,:,:,1].data.cpu().numpy()
+                if iscpx:
+                    fnp = f[n].data.cpu().numpy()
+                else:
+                    fnp = f[n,:,:,0].data.cpu().numpy() + 1j*f[n,:,:,1].data.cpu().numpy()
 
                 self.plan.f_hat = fnp
                 ynp = self.plan.trafo()
 
-                y[n,:,0] = torch.tensor(ynp.real, dtype=self.torch_dtype, device=self.device)
-                y[n,:,1] = torch.tensor(ynp.imag, dtype=self.torch_dtype, device=self.device)
+                if iscpx:
+                    y[n] = torch.tensor(ynp, dtype=self.torch_cpxdtype, device=self.device)
+                else:
+                    y[n,:,0] = torch.tensor(ynp.real, dtype=self.torch_dtype, device=self.device)
+                    y[n,:,1] = torch.tensor(ynp.imag, dtype=self.torch_dtype, device=self.device)
             return y
-        elif ndim==3:
+        elif ndim==3 and not iscpx or ndim==2 and iscpx:
             return self._forward_simple2D(f, xi)
         else:
-            raise Exception("Error: f should have 3 or 4 dimensions (batch mode)")
+            raise Exception("Error: f should have 2, 3 or 4 dimensions (batch mode)")
     def _adjoint2D(self, y, xi):
         self.test_xi(xi)
         ndim = len(y.shape)
-        if ndim==3:
+        iscpx = y.is_complex()
+        if ndim==3 and not iscpx or ndim==2 and iscpx:
             Nbatch = y.shape[0]
-            f = torch.zeros(Nbatch, self.nx, self.ny, 2, dtype=self.torch_dtype, device=self.device)
+            if iscpx:
+                f = torch.zeros(Nbatch, self.nx, self.ny, dtype=self.torch_cpxdtype, device=self.device)
+            else:
+                f = torch.zeros(Nbatch, self.nx, self.ny, 2, dtype=self.torch_dtype, device=self.device)
             for n in range(Nbatch):
-                ynp = y[n,:,0].data.cpu().numpy() + 1j*y[n,:,1].data.cpu().numpy()
+                if iscpx:
+                    ynp = y[n].data.cpu().numpy()
+                else:
+                    ynp = y[n,:,0].data.cpu().numpy() + 1j*y[n,:,1].data.cpu().numpy()
 
                 self.plan.f = ynp
                 fnp = self.plan.adjoint()
 
-                f[n,:,:,0] = torch.tensor(fnp.real, dtype=self.torch_dtype, device=self.device)
-                f[n,:,:,1] = torch.tensor(fnp.imag, dtype=self.torch_dtype, device=self.device)
+                if iscpx:
+                    f[n] = torch.tensor(fnp, dtype=self.torch_cpxdtype, device=self.device)
+                else:
+                    f[n,:,:,0] = torch.tensor(fnp.real, dtype=self.torch_dtype, device=self.device)
+                    f[n,:,:,1] = torch.tensor(fnp.imag, dtype=self.torch_dtype, device=self.device)
             return f
-        elif ndim==2:
+        elif ndim==2 and not iscpx or ndim==1 and iscpx:
             return self._adjoint_simple2D(y, xi)
         else:
-            raise Exception("Error: y should have 2 or 3 dimensions (batch mode)")
+            raise Exception("Error: y should have 1, 2 or 3 dimensions (batch mode)")
     def _backward_forward2D(self, f, g, xi):
         self.test_xi(xi)
         ndim = len(f.shape)
-        if ndim==4:
+        iscpx = f.is_complex()
+        if ndim==4 and not iscpx or ndim==3 and iscpx:
             Nbatch = f.shape[0]
             gradnp = np.zeros(xi.shape)
             grad = torch.zeros(self.K, 2, dtype=self.torch_dtype, device=self.device)
             for n in range(Nbatch):
-                gnp = g[n,:,0].data.cpu().numpy() + 1j*g[n,:,1].data.cpu().numpy()
-                fnp = f[n,:,:,0].data.cpu().numpy() + 1j*f[n,:,:,1].data.cpu().numpy()
+                if iscpx:
+                    gnp = g[n].data.cpu().numpy()
+                    fnp = f[n].data.cpu().numpy()
+                else:
+                    gnp = g[n,:,0].data.cpu().numpy() + 1j*g[n,:,1].data.cpu().numpy()
+                    fnp = f[n,:,:,0].data.cpu().numpy() + 1j*f[n,:,:,1].data.cpu().numpy()
 
                 vec_fx = np.multiply(self.XX, fnp)
                 vec_fy = np.multiply(self.XY, fnp)
@@ -148,20 +199,25 @@ class Nufft(baseNUFFT):
 
                 grad += torch.tensor(gradnp, dtype=self.torch_dtype, device=self.device)
             return grad
-        elif ndim==3:
+        elif ndim==3 and not iscpx or ndim==2 and iscpx:
             return self._backward_forward_simple2D(f, g, xi)
         else:
-            raise Exception("Error: f should have 3 or 4 dimensions (batch mode)")
+            raise Exception("Error: f should have 2, 3 or 4 dimensions (batch mode)")
     def _backward_adjoint2D(self, y, g, xi):
         self.test_xi(xi)
         ndim = len(y.shape)
-        if ndim==3:
+        iscpx = y.is_complex()
+        if ndim==3 and not iscpx or ndim==2 and iscpx:
             Nbatch = y.shape[0]
             gradnp = np.zeros(xi.shape)
             grad = torch.zeros(self.K, 2, dtype=self.torch_dtype, device=self.device)
             for n in range(Nbatch):
-                gnp = g[n,:,:,0].data.cpu().numpy() + 1j*g[n,:,:,1].data.cpu().numpy()
-                ynp = y[n,:,0].data.cpu().numpy() + 1j*y[n,:,1].data.cpu().numpy()
+                if iscpx:
+                    gnp = g[n].data.cpu().numpy()
+                    ynp = y[n].data.cpu().numpy()
+                else:
+                    gnp = g[n,:,:,0].data.cpu().numpy() + 1j*g[n,:,:,1].data.cpu().numpy()
+                    ynp = y[n,:,0].data.cpu().numpy() + 1j*y[n,:,1].data.cpu().numpy()
 
                 vecx_grad_output = np.multiply(self.XX, gnp)
                 vecy_grad_output = np.multiply(self.XY, gnp)
@@ -173,10 +229,10 @@ class Nufft(baseNUFFT):
 
                 grad += torch.tensor(gradnp, dtype=self.torch_dtype, device=self.device)
             return grad
-        elif ndim==2:
+        elif ndim==2 and not iscpx or ndim==1 and iscpx:
             return self._backward_adjoint_simple2D(y, g, xi)
         else:
-            raise Exception("Error: y should have 2 or 3 dimensions (batch mode)")
+            raise Exception("Error: y should have 1, 2 or 3 dimensions (batch mode)")
 
     def _forward_simple3D(self, f, xi):
         self.test_xi(xi)

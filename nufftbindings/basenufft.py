@@ -13,10 +13,12 @@ class baseNUFFT:
         self.Nbatch = Nb
         if doublePrecision:
             self.torch_dtype = torch.float64
+            self.torch_cpxdtype = torch.complex128
             self.np_dtype = np.float64
             self.eps = 1e-12
         else:
             self.torch_dtype = torch.float32
+            self.torch_cpxdtype = torch.complex64
             self.np_dtype = np.float32
             self.eps = 1e-6
 

@@ -2,7 +2,8 @@
 # Last modification: 2021/22/09
 
 import torch
-from pykeops.torch import LazyTensor
+from pykeops.torch import LazyTensor, ComplexLazyTensor
+# from pykeops import IntCst, Imag2Complex
 from nufftbindings.basenufft import *
 
 
@@ -48,71 +49,111 @@ class Nufft(baseNUFFT):
     def _forward2D(self, f, xi):
         self.test_xi(xi)
         ndim = len(f.shape)
-        if ndim==4:
+        iscpx = f.is_complex()
+        if ndim==4 and not iscpx or ndim==3 and iscpx:
             Nbatch = f.shape[0]
-            f = f.permute(1,2,3,0) # nx,ny,r/i,batch
+            if iscpx:
+                f = f.permute(1,2,0) # nx,ny,batch
+                fr = f.real.type(self.torch_dtype).view(-1,Nbatch).contiguous()
+                fi = f.imag.type(self.torch_dtype).view(-1,Nbatch).contiguous()
+            else:
+                f = f.permute(1,2,3,0) # nx,ny,r/i,batch
+                fr = f[:,:,0,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
+                fi = f[:,:,1,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
 
-            fr = f[:,:,0,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
-            fi = f[:,:,1,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
             fr = LazyTensor( fr[None,:,:] )
             fi = LazyTensor( fi[None,:,:] )
             f_cos = fr.concat(fi)
             f_sin = fi.concat(-fr)
             y_concat = (f_cos*self.cos_coupling+f_sin*self.sin_coupling).sum(dim=1)
-            y = torch.zeros(self.K, 2, Nbatch, dtype=self.torch_dtype, device=self.device)
-            y[:,0,:] = y_concat[:,:Nbatch]
-            y[:,1,:] = y_concat[:,Nbatch:]
+            if iscpx:
+                y = torch.zeros(self.K, Nbatch, dtype=self.torch_cpxdtype, device=self.device)
+                y.real = y_concat[:,:Nbatch]
+                y.imag = y_concat[:,Nbatch:]
+                y = y.permute(1,0) # batch,K
+            else:
+                y = torch.zeros(self.K, 2, Nbatch, dtype=self.torch_dtype, device=self.device)
+                y[:,0,:] = y_concat[:,:Nbatch]
+                y[:,1,:] = y_concat[:,Nbatch:]
+                y = y.permute(2,0,1) # batch,K,r/i
 
-            y = y.permute(2,0,1) # batch,K,r/i
             return y
-        elif ndim==3:
-            fr = f[:,:,0].type(self.torch_dtype).view(-1,1).contiguous()
-            fi = f[:,:,1].type(self.torch_dtype).view(-1,1).contiguous()
+        elif ndim==3 and not iscpx or ndim==2 and iscpx:
+            if iscpx:
+                fr = f.real.type(self.torch_dtype).view(-1,1).contiguous()
+                fi = f.imag.type(self.torch_dtype).view(-1,1).contiguous()
+            else:
+                fr = f[:,:,0].type(self.torch_dtype).view(-1,1).contiguous()
+                fi = f[:,:,1].type(self.torch_dtype).view(-1,1).contiguous()
             fr = LazyTensor( fr[None,:,:] )
             fi = LazyTensor( fi[None,:,:] )
             f_cos = fr.concat(fi)
             f_sin = fi.concat(-fr)
             y_concat = (f_cos*self.cos_coupling+f_sin*self.sin_coupling).sum(dim=1)
-            y = torch.zeros(self.K, 2, dtype=self.torch_dtype, device=self.device)
-            y[:,0] = y_concat[:,0].view(-1)
-            y[:,1] = y_concat[:,1].view(-1)
+            if iscpx:
+                y = torch.zeros(self.K, dtype=self.torch_cpxdtype, device=self.device)
+                y.real = y_concat[:,0].view(-1)
+                y.imag = y_concat[:,1].view(-1)
+            else:
+                y = torch.zeros(self.K, 2, dtype=self.torch_dtype, device=self.device)
+                y[:,0] = y_concat[:,0].view(-1)
+                y[:,1] = y_concat[:,1].view(-1)
             return y
         else:
-            raise Exception("Error: f should have 3 or 4 dimensions (batch mode)")
+            raise Exception("Error: f should have 2, 3 or 4 dimensions (batch mode)")
     def _adjoint2D(self, y, xi):
         self.test_xi(xi)
         ndim = len(y.shape)
-        if ndim==3:
+        iscpx = y.is_complex()
+        if ndim==3 and not iscpx or ndim==2 and iscpx:
             Nbatch = y.shape[0]
-            y = y.permute(1,2,0) # K,r/i,batch
-
-            yr = y[:,0,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
-            yi = y[:,1,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
+            if iscpx:
+                y = y.permute(1,0) # K,batch
+                yr = y.real.type(self.torch_dtype).view(-1,Nbatch).contiguous()
+                yi = y.imag.type(self.torch_dtype).view(-1,Nbatch).contiguous()
+            else:
+                y = y.permute(1,2,0) # K,r/i,batch
+                yr = y[:,0,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
+                yi = y[:,1,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
             yr = LazyTensor( yr[:,None,:] )
             yi = LazyTensor( yi[:,None,:] )
             y_cos=yr.concat(yi)
             y_sin=(-yi).concat(yr)
             f_concat = (y_cos*self.cos_coupling+y_sin*self.sin_coupling).sum(dim=0)
 
-            f = torch.zeros(self.nx,self.ny, 2, Nbatch, dtype=self.torch_dtype, device=self.device)
-            f[:,:,0,:] = f_concat[:,:Nbatch].view(self.nx,self.ny,Nbatch)
-            f[:,:,1,:] = f_concat[:,Nbatch:].view(self.nx,self.ny,Nbatch)
-
-            f = f.permute(3,0,1,2) # batch,nx,ny,r/i
+            if iscpx:
+                f = torch.zeros(self.nx,self.ny, Nbatch, dtype=self.torch_cpxdtype, device=self.device)
+                f.real = f_concat[:,:Nbatch].view(self.nx,self.ny,Nbatch)
+                f.imag = f_concat[:,Nbatch:].view(self.nx,self.ny,Nbatch)
+                f = f.permute(2,0,1) # batch,nx,ny
+            else:
+                f = torch.zeros(self.nx,self.ny, 2, Nbatch, dtype=self.torch_dtype, device=self.device)
+                f[:,:,0,:] = f_concat[:,:Nbatch].view(self.nx,self.ny,Nbatch)
+                f[:,:,1,:] = f_concat[:,Nbatch:].view(self.nx,self.ny,Nbatch)
+                f = f.permute(3,0,1,2) # batch,nx,ny,r/i
             return f
-        elif ndim==2:
+        elif ndim==2 and not iscpx or ndim==1 and iscpx:
 
-            yr = y[:,0].type(self.torch_dtype).view(-1,1).contiguous()
-            yi = y[:,1].type(self.torch_dtype).view(-1,1).contiguous()
+            if iscpx:
+                yr = y.real.type(self.torch_dtype).view(-1,1).contiguous()
+                yi = y.imag.type(self.torch_dtype).view(-1,1).contiguous()
+            else:
+                yr = y[:,0].type(self.torch_dtype).view(-1,1).contiguous()
+                yi = y[:,1].type(self.torch_dtype).view(-1,1).contiguous()
             yr = LazyTensor( yr[:,None,:] )
             yi = LazyTensor( yi[:,None,:] )
             y_cos=yr.concat(yi)
             y_sin=(-yi).concat(yr)
             f_concat = (y_cos*self.cos_coupling+y_sin*self.sin_coupling).sum(dim=0)
 
-            f = torch.zeros(self.nx,self.ny, 2, dtype=self.torch_dtype, device=self.device)
-            f[:,:,0] = f_concat[:,0].view(self.nx,self.ny)
-            f[:,:,1] = f_concat[:,1].view(self.nx,self.ny)
+            if iscpx:
+                f = torch.zeros(self.nx,self.ny, dtype=self.torch_cpxdtype, device=self.device)
+                f.real = f_concat[:,0].view(self.nx,self.ny)
+                f.imag = f_concat[:,1].view(self.nx,self.ny)
+            else:
+                f = torch.zeros(self.nx,self.ny, 2, dtype=self.torch_dtype, device=self.device)
+                f[:,:,0] = f_concat[:,0].view(self.nx,self.ny)
+                f[:,:,1] = f_concat[:,1].view(self.nx,self.ny)
 
             return f
         else:
@@ -120,13 +161,20 @@ class Nufft(baseNUFFT):
     def _backward_forward2D(self, f, g, xi):
         self.test_xi(xi)
         ndim = len(f.shape)
-        if ndim==4:
+        iscpx = f.is_complex()
+        if ndim==4 and not iscpx or ndim==3 and iscpx:
             Nbatch = f.shape[0]
-            f = f.permute(1,2,3,0) # nx,ny,r/i,batch
-            g = g.permute(1,2,0) # K,r/i,batch
+            if iscpx:
+                f = f.permute(1,2,0) # nx,ny,batch
+                g = g.permute(1,0) # K,batch
+                fr = f.real.type(self.torch_dtype).view(-1,Nbatch).contiguous()
+                fi = f.imag.type(self.torch_dtype).view(-1,Nbatch).contiguous()
+            else:
+                f = f.permute(1,2,3,0) # nx,ny,r/i,batch
+                g = g.permute(1,2,0) # K,r/i,batch
+                fr = f[:,:,0,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
+                fi = f[:,:,1,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
 
-            fr = f[:,:,0,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
-            fi = f[:,:,1,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
             fr = LazyTensor( fr[None,:,:] )
             fi = LazyTensor( fi[None,:,:] )
 
@@ -142,17 +190,27 @@ class Nufft(baseNUFFT):
             tmp_concat = (vec_cos*self.cos_coupling+vec_sin*self.sin_coupling).sum(dim=1).view(-1,4*Nbatch)
             tmp1r = tmp_concat[:,:Nbatch]
             tmp1i = tmp_concat[:,Nbatch:2*Nbatch]
-            grad[:,0] = (torch.mul(tmp1i, g[:,0,:]) - torch.mul(tmp1r, g[:,1,:])).sum(dim=1)
+            if iscpx:
+                grad[:,0] = (torch.mul(tmp1i, g.real) - torch.mul(tmp1r, g.imag)).sum(dim=1)
+            else:
+                grad[:,0] = (torch.mul(tmp1i, g[:,0,:]) - torch.mul(tmp1r, g[:,1,:])).sum(dim=1)
 
             tmp2r = tmp_concat[:,2*Nbatch:3*Nbatch]
             tmp2i = tmp_concat[:,3*Nbatch:]
-            grad[:,1] = (torch.mul(tmp2i, g[:,0,:]) - torch.mul(tmp2r, g[:,1,:])).sum(dim=1)
+            if iscpx:
+                grad[:,1] = (torch.mul(tmp2i, g.real) - torch.mul(tmp2r, g.imag)).sum(dim=1)
+            else:
+                grad[:,1] = (torch.mul(tmp2i, g[:,0,:]) - torch.mul(tmp2r, g[:,1,:])).sum(dim=1)
 
 
             return grad
-        elif ndim==3:
-            fr = f[:,:,0].type(self.torch_dtype).view(-1,1).contiguous()
-            fi = f[:,:,1].type(self.torch_dtype).view(-1,1).contiguous()
+        elif ndim==3 and not iscpx or ndim==2 and iscpx:
+            if iscpx:
+                fr = f.real.type(self.torch_dtype).view(-1,1).contiguous()
+                fi = f.imag.type(self.torch_dtype).view(-1,1).contiguous()
+            else:
+                fr = f[:,:,0].type(self.torch_dtype).view(-1,1).contiguous()
+                fi = f[:,:,1].type(self.torch_dtype).view(-1,1).contiguous()
             fr = LazyTensor( fr[None,:,:] )
             fi = LazyTensor( fi[None,:,:] )
 
@@ -168,11 +226,17 @@ class Nufft(baseNUFFT):
             tmp_concat = (vec_cos*self.cos_coupling+vec_sin*self.sin_coupling).sum(dim=1).view(-1,4)
             tmp1r = tmp_concat[:,0]
             tmp1i = tmp_concat[:,1]
-            grad[:,0] = torch.mul(tmp1i, g[:,0]) - torch.mul(tmp1r, g[:,1])
+            if iscpx:
+                grad[:,0] = torch.mul(tmp1i, g.real) - torch.mul(tmp1r, g.imag)
+            else:
+                grad[:,0] = torch.mul(tmp1i, g[:,0]) - torch.mul(tmp1r, g[:,1])
 
             tmp2r = tmp_concat[:,2]
             tmp2i = tmp_concat[:,3]
-            grad[:,1] = torch.mul(tmp2i, g[:,0]) - torch.mul(tmp2r, g[:,1])
+            if iscpx:
+                grad[:,1] = torch.mul(tmp2i, g.real) - torch.mul(tmp2r, g.imag)
+            else:
+                grad[:,1] = torch.mul(tmp2i, g[:,0]) - torch.mul(tmp2r, g[:,1])
 
             return grad
         else:
@@ -181,13 +245,20 @@ class Nufft(baseNUFFT):
     def _backward_adjoint2D(self, y, g, xi):
         self.test_xi(xi)
         ndim = len(y.shape)
-        if ndim==3:
+        iscpx = y.is_complex()
+        if ndim==3 and not iscpx or ndim==2 and iscpx:
             Nbatch = y.shape[0]
-            y = y.permute(1,2,0) # K,r/i,batch
-            g = g.permute(1,2,3,0) # nx,ny,r/i,batch
+            if iscpx:
+                y = y.permute(1,0) # K,batch
+                g = g.permute(1,2,0) # nx,ny,batch
+                gr = g.real.type(self.torch_dtype).view(-1,Nbatch).contiguous()
+                gi = g.imag.type(self.torch_dtype).view(-1,Nbatch).contiguous()
+            else:
+                y = y.permute(1,2,0) # K,r/i,batch
+                g = g.permute(1,2,3,0) # nx,ny,r/i,batch
+                gr = g[:,:,0,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
+                gi = g[:,:,1,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
 
-            gr = g[:,:,0,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
-            gi = g[:,:,1,:].type(self.torch_dtype).view(-1,Nbatch).contiguous()
             gr = LazyTensor( gr[None,:,:] )
             gi = LazyTensor( gi[None,:,:] )
 
@@ -203,17 +274,27 @@ class Nufft(baseNUFFT):
             tmp_concat = (vec_grad_output_cos*self.cos_coupling+vec_grad_output_sin*self.sin_coupling).sum(dim=1).view(-1,4*Nbatch)
             tmp1r = tmp_concat[:,:Nbatch]
             tmp1i = tmp_concat[:,Nbatch:2*Nbatch]
-            grad[:,0] = (torch.mul(tmp1i, y[:,0,:]) - torch.mul(tmp1r, y[:,1,:])).sum(dim=1)
+            if iscpx:
+                grad[:,0] = (torch.mul(tmp1i, y.real) - torch.mul(tmp1r, y.imag)).sum(dim=1)
+            else:
+                grad[:,0] = (torch.mul(tmp1i, y[:,0,:]) - torch.mul(tmp1r, y[:,1,:])).sum(dim=1)
 
             tmp2r = tmp_concat[:,2*Nbatch:3*Nbatch]
             tmp2i = tmp_concat[:,3*Nbatch:]
-            grad[:,1] = (torch.mul(tmp2i, y[:,0,:]) - torch.mul(tmp2r, y[:,1,:])).sum(dim=1)
+            if iscpx:
+                grad[:,1] = (torch.mul(tmp2i, y.real) - torch.mul(tmp2r, y.imag)).sum(dim=1)
+            else:
+                grad[:,1] = (torch.mul(tmp2i, y[:,0,:]) - torch.mul(tmp2r, y[:,1,:])).sum(dim=1)
 
 
             return grad
-        elif ndim==2:
-            gr = g[:,:,0].type(self.torch_dtype).view(-1,1).contiguous()
-            gi = g[:,:,1].type(self.torch_dtype).view(-1,1).contiguous()
+        elif ndim==2 and not iscpx or ndim==1 and iscpx:
+            if iscpx:
+                gr = g.real.type(self.torch_dtype).view(-1,1).contiguous()
+                gi = g.imag.type(self.torch_dtype).view(-1,1).contiguous()
+            else:
+                gr = g[:,:,0].type(self.torch_dtype).view(-1,1).contiguous()
+                gi = g[:,:,1].type(self.torch_dtype).view(-1,1).contiguous()
             gr = LazyTensor( gr[None,:,:] )
             gi = LazyTensor( gi[None,:,:] )
 
@@ -229,11 +310,17 @@ class Nufft(baseNUFFT):
             tmp_concat = (vec_grad_output_cos*self.cos_coupling+vec_grad_output_sin*self.sin_coupling).sum(dim=1).view(-1,4)
             tmp1r = tmp_concat[:,0]
             tmp1i = tmp_concat[:,1]
-            grad[:,0] = torch.mul(tmp1i, y[:,0]) - torch.mul(tmp1r, y[:,1])
+            if iscpx:
+                grad[:,0] = torch.mul(tmp1i, y.real) - torch.mul(tmp1r, y.imag)
+            else:
+                grad[:,0] = torch.mul(tmp1i, y[:,0]) - torch.mul(tmp1r, y[:,1])
 
             tmp2r = tmp_concat[:,2]
             tmp2i = tmp_concat[:,3]
-            grad[:,1] = torch.mul(tmp2i, y[:,0]) - torch.mul(tmp2r, y[:,1])
+            if iscpx:
+                grad[:,1] = torch.mul(tmp2i, y.real) - torch.mul(tmp2r, y.imag)
+            else:
+                grad[:,1] = torch.mul(tmp2i, y[:,0]) - torch.mul(tmp2r, y[:,1])
 
             return grad
         else:

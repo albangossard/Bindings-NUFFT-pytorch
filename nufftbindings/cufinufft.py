@@ -72,95 +72,141 @@ class Nufft(baseNUFFT):
         self.test_xi(xi)
         self.test_f(f)
         ndim = len(f.shape)
-        if ndim==4:
+        iscpx = f.is_complex()
+        if ndim==4 and not iscpx or ndim==3 and iscpx:
             Nbatch = f.shape[0]
-            y = torch.zeros(Nbatch, self.K, 2, device=self.device, dtype=self.torch_dtype)
-            fcpx = f.type(self.torch_dtype).contiguous()
+            if iscpx:
+                y = torch.zeros(Nbatch, self.K, device=self.device, dtype=self.torch_cpxdtype)
+                fcpx = f.type(self.torch_cpxdtype).contiguous()
+            else:
+                y = torch.zeros(Nbatch, self.K, 2, device=self.device, dtype=self.torch_dtype)
+                fcpx = f.type(self.torch_dtype).contiguous()
             if Nbatch==1:
                 self.plan_forward.execute(y.data_ptr(), fcpx.data_ptr())
             else:
                 self.plan_forward_batch.execute(y.data_ptr(), fcpx.data_ptr())
             return y
         else:
-            raise Exception("Error: f should have 4 dimensions")
+            raise Exception("Error: f should have 4 dimensions (one axis for real/imaginary parts) or 3 dimensions (complex)")
     def _adjoint2D(self, y, xi):
         self.test_xi(xi)
         self.test_f(y)
         ndim = len(y.shape)
-        if ndim==3:
+        iscpx = y.is_complex()
+        if ndim==3 and not iscpx or ndim==2 and iscpx:
             Nbatch = y.shape[0]
-            f = torch.zeros(Nbatch, self.nx, self.ny, 2, device=self.device, dtype=self.torch_dtype)
-            ycpx = y.type(self.torch_dtype).contiguous()
+            if iscpx:
+                f = torch.zeros(Nbatch, self.nx, self.ny, device=self.device, dtype=self.torch_cpxdtype)
+                ycpx = y.type(self.torch_cpxdtype).contiguous()
+            else:
+                f = torch.zeros(Nbatch, self.nx, self.ny, 2, device=self.device, dtype=self.torch_dtype)
+                ycpx = y.type(self.torch_dtype).contiguous()
             if Nbatch==1:
                 self.plan_adjoint.execute(ycpx.data_ptr(), f.data_ptr())
             else:
                 self.plan_adjoint_batch.execute(ycpx.data_ptr(), f.data_ptr())
             return f
         else:
-            raise Exception("Error: y should have 3 dimensions")
+            raise Exception("Error: y should have 3 dimensions (one axis for real/imaginary parts) or 2 dimensions (complex)")
     def _backward_forward2D(self, f, g, xi):
         self.test_xi(xi)
         ndim = len(f.shape)
-        if ndim==4:
+        iscpx = f.is_complex()
+        if ndim==4 and not iscpx or ndim==3 and iscpx:
             Nbatch = f.shape[0]
 
-            vec_fx = torch.mul(self.XX[None,:,:,None].contiguous(), f.contiguous())
-            vec_fy = torch.mul(self.XY[None,:,:,None].contiguous(), f.contiguous())
+            if iscpx:
+                vec_fx = torch.mul(self.XX[None,:,:].contiguous(), f.contiguous())
+                vec_fy = torch.mul(self.XY[None,:,:].contiguous(), f.contiguous())
+            else:
+                vec_fx = torch.mul(self.XX[None,:,:,None].contiguous(), f.contiguous())
+                vec_fy = torch.mul(self.XY[None,:,:,None].contiguous(), f.contiguous())
 
             grad = torch.zeros_like(xi)
 
-            tmp = torch.zeros(Nbatch, self.K, 2, device=self.device, dtype=self.torch_dtype)
-            vec_fx = vec_fx.type(self.torch_dtype).contiguous()
+            if iscpx:
+                tmp = torch.zeros(Nbatch, self.K, device=self.device, dtype=self.torch_cpxdtype)
+                vec_fx = vec_fx.type(self.torch_cpxdtype).contiguous()
+            else:
+                tmp = torch.zeros(Nbatch, self.K, 2, device=self.device, dtype=self.torch_dtype)
+                vec_fx = vec_fx.type(self.torch_dtype).contiguous()
             if Nbatch==1:
                 self.plan_forward.execute(tmp.data_ptr(), vec_fx.data_ptr())
             else:
                 self.plan_forward_batch.execute(tmp.data_ptr(), vec_fx.data_ptr())
 
-            grad[:,0] = ( torch.mul(tmp[...,1], g[...,0]) - torch.mul(tmp[...,0], g[...,1]) ).sum(axis=0)
+            if iscpx:
+                grad[:,0] = ( torch.mul(tmp.imag, g.real) - torch.mul(tmp.real, g.imag) ).sum(axis=0)
+            else:
+                grad[:,0] = ( torch.mul(tmp[...,1], g[...,0]) - torch.mul(tmp[...,0], g[...,1]) ).sum(axis=0)
 
-            vec_fy = vec_fy.type(self.torch_dtype).contiguous()
+            if iscpx:
+                vec_fy = vec_fy.type(self.torch_cpxdtype).contiguous()
+            else:
+                vec_fy = vec_fy.type(self.torch_dtype).contiguous()
             if Nbatch==1:
                 self.plan_forward.execute(tmp.data_ptr(), vec_fy.data_ptr())
             else:
                 self.plan_forward_batch.execute(tmp.data_ptr(), vec_fy.data_ptr())
 
-            grad[:,1] = ( torch.mul(tmp[...,1], g[...,0]) - torch.mul(tmp[...,0], g[...,1]) ).sum(axis=0)
+            if iscpx:
+                grad[:,1] = ( torch.mul(tmp.imag, g.real) - torch.mul(tmp.real, g.imag) ).sum(axis=0)
+            else:
+                grad[:,1] = ( torch.mul(tmp[...,1], g[...,0]) - torch.mul(tmp[...,0], g[...,1]) ).sum(axis=0)
 
             return grad
         else:
-            raise Exception("Error: f should have 4 dimensions")
+            raise Exception("Error: f should have 4 dimensions (one axis for real/imaginary parts) or 3 dimensions (complex)")
 
     def _backward_adjoint2D(self, y, g, xi):
         self.test_xi(xi)
         ndim = len(y.shape)
-        if ndim==3:
+        iscpx = y.is_complex()
+        if ndim==3 and not iscpx or ndim==2 and iscpx:
             Nbatch = y.shape[0]
 
-            vecx_grad_output = torch.mul(self.XX[None,:,:,None].contiguous(), g.contiguous())
-            vecy_grad_output = torch.mul(self.XY[None,:,:,None].contiguous(), g.contiguous())
+            if iscpx:
+                vecx_grad_output = torch.mul(self.XX[None,:,:].contiguous(), g.contiguous())
+                vecy_grad_output = torch.mul(self.XY[None,:,:].contiguous(), g.contiguous())
+            else:
+                vecx_grad_output = torch.mul(self.XX[None,:,:,None].contiguous(), g.contiguous())
+                vecy_grad_output = torch.mul(self.XY[None,:,:,None].contiguous(), g.contiguous())
 
             grad = torch.zeros_like(xi)
 
-            tmp = torch.zeros(Nbatch, self.K, 2, device=self.device, dtype=self.torch_dtype)
-            vecx_grad_output = vecx_grad_output.type(self.torch_dtype).contiguous()
+            if iscpx:
+                tmp = torch.zeros(Nbatch, self.K, device=self.device, dtype=self.torch_cpxdtype)
+                vecx_grad_output = vecx_grad_output.type(self.torch_cpxdtype).contiguous()
+            else:
+                tmp = torch.zeros(Nbatch, self.K, 2, device=self.device, dtype=self.torch_dtype)
+                vecx_grad_output = vecx_grad_output.type(self.torch_dtype).contiguous()
             if Nbatch==1:
                 self.plan_forward.execute(tmp.data_ptr(), vecx_grad_output.data_ptr())
             else:
                 self.plan_forward_batch.execute(tmp.data_ptr(), vecx_grad_output.data_ptr())
 
-            grad[:,0] = ( torch.mul(tmp[...,1], y[...,0]) - torch.mul(tmp[...,0], y[...,1]) ).sum(axis=0)
+            if iscpx:
+                grad[:,0] = ( torch.mul(tmp.imag, y.real) - torch.mul(tmp.real, y.imag) ).sum(axis=0)
+            else:
+                grad[:,0] = ( torch.mul(tmp[...,1], y[...,0]) - torch.mul(tmp[...,0], y[...,1]) ).sum(axis=0)
 
-            vecy_grad_output = vecy_grad_output.type(self.torch_dtype).contiguous()
+            if iscpx:
+                vecy_grad_output = vecy_grad_output.type(self.torch_cpxdtype).contiguous()
+            else:
+                vecy_grad_output = vecy_grad_output.type(self.torch_dtype).contiguous()
             if Nbatch==1:
                 self.plan_forward.execute(tmp.data_ptr(), vecy_grad_output.data_ptr())
             else:
                 self.plan_forward_batch.execute(tmp.data_ptr(), vecy_grad_output.data_ptr())
 
-            grad[:,1] = ( torch.mul(tmp[...,1], y[...,0]) - torch.mul(tmp[...,0], y[...,1]) ).sum(axis=0)
+            if iscpx:
+                grad[:,1] = ( torch.mul(tmp.imag, y.real) - torch.mul(tmp.real, y.imag) ).sum(axis=0)
+            else:
+                grad[:,1] = ( torch.mul(tmp[...,1], y[...,0]) - torch.mul(tmp[...,0], y[...,1]) ).sum(axis=0)
 
             return grad
         else:
-            raise Exception("Error: y should have 3 dimensions")
+            raise Exception("Error: y should have 3 dimensions (one axis for real/imaginary parts) or 2 dimensions (complex)")
 
     def _forward3D(self, f, xi):
         self.test_xi(xi)
