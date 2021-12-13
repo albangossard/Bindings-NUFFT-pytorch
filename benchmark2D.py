@@ -16,7 +16,7 @@ list_modulenames = ["pyKeOps", "kbnufft", "cuFINUFFT", "NFFT"]
 list_device = ["cuda:0", "cuda:0", "cuda:0", "cpu"]
 list_module = [nufftko, nufftkb, nufftcu, nufftnf]
 
-fnp = np.random.randn(Nb, nx, ny, 2)
+fnp = np.random.randn(Nb, nx, ny)+1j*np.random.randn(Nb, nx, ny)
 xinp = np.random.uniform(-np.pi, np.pi, (K, 2))
 
 for d, module, modulename in zip(list_device, list_module, list_modulenames):
@@ -52,6 +52,6 @@ for d, module, modulename in zip(list_device, list_module, list_modulenames):
     with torch.no_grad():
         out = out.cpu()
         print('  relative error = %1.3e'%(torch.norm(out-outref)/torch.norm(out)).item())
-        print('  correlation = %1.3e'%((out*outref).sum()/(torch.norm(out)*torch.norm(outref))).item())
+        print('  correlation = %1.3e'%((out*(outref).conj()).abs().sum()/(torch.norm(out)*torch.norm(outref))).item())
         print('  ratio = %1.3e'%(out.norm()/outref.norm()).item())
         print('')

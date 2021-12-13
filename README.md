@@ -29,6 +29,8 @@ device = torch.device("cuda:0")
 # otherwise use
 # device = torch.device("cuda:0")
 
+dtype = torch.complex64
+
 # define the positions in the Fourier domain
 xi = torch.rand(K, 2, device=device)*2*np.pi-np.pi
 xi.requires_grad = True
@@ -37,7 +39,7 @@ xi.requires_grad = True
 nufft.nufft.set_dims(K, (nx, ny), device, Nb=3)
 nufft.nufft.precompute(xi)
 
-f = torch.randn(Nb, nx, ny, 2, device=device)
+f = torch.randn(Nb, nx, ny, device=device, dtype=dtype)
 y = nufft.forward(xi, f)
 g = nufft.adjoint(xi, y)
 # you can define whatever cost function you want and compute the gradient with respect to the image f or to xi
