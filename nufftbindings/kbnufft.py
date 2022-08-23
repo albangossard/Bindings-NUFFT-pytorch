@@ -1,5 +1,5 @@
 # Author: Alban Gossard
-# Last modification: 2021/22/09
+# Last modification: 2022/23/08
 
 import torch
 import torchkbnufft as tkbn
@@ -33,10 +33,10 @@ class Nufft(baseNUFFT):
         if ndim != 4 and not iscpx or ndim != 3 and iscpx:
             raise Exception("Error: f should have 4 dimensions: batch, nx, ny, r/i or 3 dimensions: batch, nx, ny (complex dtype)")
         if iscpx:
-            f = f[:,None].type(torch.complex128) # batch,nx,ny
+            f = f[:,None].type(self.torch_cpxdtype) # batch,nx,ny
         else:
-            f = f[:,None].type(torch.double) # batch,nx,ny,r/i
-        xi = xi.permute(1,0).type(torch.double)
+            f = f[:,None].type(self.torch_dtype) # batch,nx,ny,r/i
+        xi = xi.permute(1,0).type(self.torch_dtype)
         y = self.nufft_ob(f, xi)[:,0]
         return y
     def _adjoint2D(self, y, xi):
@@ -46,10 +46,10 @@ class Nufft(baseNUFFT):
         if ndim != 3 and not iscpx or ndim != 2 and iscpx:
             raise Exception("Error: y should have 3 dimensions: batch, K, r/i or 2 dimensions: batch, K (complex dtype)")
         if iscpx:
-            y = y[:,None].type(torch.complex128) # batch,K
+            y = y[:,None].type(self.torch_cpxdtype) # batch,K
         else:
-            y = y[:,None].type(torch.double) # batch,K,r/i
-        xi = xi.permute(1,0).type(torch.double)
+            y = y[:,None].type(self.torch_dtype) # batch,K,r/i
+        xi = xi.permute(1,0).type(self.torch_dtype)
         f = self.nufft_adj_ob(y, xi)[:,0]
         return f
     def _backward_forward2D(self, f, g, xi):
@@ -60,9 +60,9 @@ class Nufft(baseNUFFT):
         if ndim != 4 and not iscpx or ndim != 3 and iscpx:
             raise Exception("Error: f should have 4 dimensions: batch, nx, ny, r/i or 3 dimensions: batch, nx, ny (complex dtype)")
         if iscpx:
-            f = f[:,None].type(torch.complex128) # batch,nx,ny
-            xi = xi.permute(1,0).type(torch.double)
-            g = g[:,None].type(torch.complex128) # batch,K
+            f = f[:,None].type(self.torch_cpxdtype) # batch,nx,ny
+            xi = xi.permute(1,0).type(self.torch_dtype)
+            g = g[:,None].type(self.torch_cpxdtype) # batch,K
             #                          batch,coil,nx,ny
             vec_fx = torch.mul(self.XX[None,None], f)
             vec_fy = torch.mul(self.XY[None,None], f)
@@ -72,9 +72,9 @@ class Nufft(baseNUFFT):
             tmp = self.nufft_ob(vec_fy, xi)[:,0]
             grad[:,1] = ( torch.mul(tmp.imag, g[:,0].real) - torch.mul(tmp.real, g[:,0].imag) ).sum(axis=0)
         else:
-            f = f[:,None].type(torch.double) # batch,nx,ny,r/i
-            xi = xi.permute(1,0).type(torch.double)
-            g = g[:,None].type(torch.double) # batch,K,r/i
+            f = f[:,None].type(self.torch_dtype) # batch,nx,ny,r/i
+            xi = xi.permute(1,0).type(self.torch_dtype)
+            g = g[:,None].type(self.torch_dtype) # batch,K,r/i
             #                          batch,coil,nx,ny,r/i
             vec_fx = torch.mul(self.XX[None,None,...,None], f)
             vec_fy = torch.mul(self.XY[None,None,...,None], f)
@@ -93,9 +93,9 @@ class Nufft(baseNUFFT):
         if ndim != 3 and not iscpx or ndim != 2 and iscpx:
             raise Exception("Error: y should have 3 dimensions: batch, K, r/i or 2 dimensions: batch, K (complex dtype)")
         if iscpx:
-            y = y[:,None].type(torch.complex128) # batch,K
-            xi = xi.permute(1,0).type(torch.double)
-            g = g[:,None].type(torch.complex128) # batch,nx,ny
+            y = y[:,None].type(self.torch_cpxdtype) # batch,K
+            xi = xi.permute(1,0).type(self.torch_dtype)
+            g = g[:,None].type(self.torch_cpxdtype) # batch,nx,ny
             #                          batch,coil,nx,ny
             vecx_grad_output = torch.mul(self.XX[None,None], g)
             vecy_grad_output = torch.mul(self.XY[None,None], g)
@@ -105,9 +105,9 @@ class Nufft(baseNUFFT):
             tmp = self.nufft_ob(vecy_grad_output, xi)[:,0]
             grad[:,1] = ( torch.mul(tmp.imag, y[:,0].real) - torch.mul(tmp.real, y[:,0].imag) ).sum(axis=0)
         else:
-            y = y[:,None].type(torch.double) # batch,K,r/i
-            xi = xi.permute(1,0).type(torch.double)
-            g = g[:,None].type(torch.double) # batch,nx,ny,r/i
+            y = y[:,None].type(self.torch_dtype) # batch,K,r/i
+            xi = xi.permute(1,0).type(self.torch_dtype)
+            g = g[:,None].type(self.torch_dtype) # batch,nx,ny,r/i
             #                          batch,coil,nx,ny,r/i
             vecx_grad_output = torch.mul(self.XX[None,None,...,None], g)
             vecy_grad_output = torch.mul(self.XY[None,None,...,None], g)
@@ -124,8 +124,8 @@ class Nufft(baseNUFFT):
         ndim = len(f.shape)
         if ndim != 5:
             raise Exception("Error: f should have 5 dimensions: batch, nx, ny, nz, r/i")
-        f = f[:,None].type(torch.double) # batch,nx,ny,nz,r/i
-        xi = xi.permute(1,0).type(torch.double)
+        f = f[:,None].type(self.torch_dtype) # batch,nx,ny,nz,r/i
+        xi = xi.permute(1,0).type(self.torch_dtype)
         y = self.nufft_ob(f, xi)[:,0]
         return y
     def _adjoint3D(self, y, xi):
@@ -133,8 +133,8 @@ class Nufft(baseNUFFT):
         ndim = len(y.shape)
         if ndim != 3:
             raise Exception("Error: y should have 3 dimensions: batch, K, r/i")
-        y = y[:,None].type(torch.double) # batch,K,r/i
-        xi = xi.permute(1,0).type(torch.double)
+        y = y[:,None].type(self.torch_dtype) # batch,K,r/i
+        xi = xi.permute(1,0).type(self.torch_dtype)
         f = self.nufft_adj_ob(y, xi)[:,0]
         return f
     def _backward_forward3D(self, f, g, xi):
@@ -143,9 +143,9 @@ class Nufft(baseNUFFT):
         grad = torch.zeros(xi.shape, dtype=self.torch_dtype, device=self.device)
         if ndim != 5:
             raise Exception("Error: f should have 5 dimensions: batch, nx, ny, nz, r/i")
-        f = f[:,None].type(torch.double) # batch,nx,ny,nz,r/i
-        xi = xi.permute(1,0).type(torch.double)
-        g = g[:,None].type(torch.double) # batch,K,r/i
+        f = f[:,None].type(self.torch_dtype) # batch,nx,ny,nz,r/i
+        xi = xi.permute(1,0).type(self.torch_dtype)
+        g = g[:,None].type(self.torch_dtype) # batch,K,r/i
         #                          batch,coil,nx,ny,nz,r/i
         vec_fx = torch.mul(self.XX[None,None,...,None], f)
         vec_fy = torch.mul(self.XY[None,None,...,None], f)
@@ -165,9 +165,9 @@ class Nufft(baseNUFFT):
         grad = torch.zeros(xi.shape, dtype=self.torch_dtype, device=self.device)
         if ndim != 3:
             raise Exception("Error: y should have 3 dimensions: batch, K, r/i")
-        y = y[:,None].type(torch.double) # batch,K,r/i
-        xi = xi.permute(1,0).type(torch.double)
-        g = g[:,None].type(torch.double) # batch,nx,ny,nz,r/i
+        y = y[:,None].type(self.torch_dtype) # batch,K,r/i
+        xi = xi.permute(1,0).type(self.torch_dtype)
+        g = g[:,None].type(self.torch_dtype) # batch,nx,ny,nz,r/i
         #                          batch,coil,nx,ny,nz,r/i
         vecx_grad_output = torch.mul(self.XX[None,None,...,None], g)
         vecy_grad_output = torch.mul(self.XY[None,None,...,None], g)
