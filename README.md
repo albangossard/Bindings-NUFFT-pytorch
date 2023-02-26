@@ -27,7 +27,7 @@ Nb = 3              # size of the batch
 # CUDA device if you use kbnufft, cufinufft or pykeops
 device = torch.device("cuda:0")
 # otherwise use
-# device = torch.device("cuda:0")
+# device = torch.device("cpu")
 
 dtype = torch.complex64
 
@@ -77,3 +77,13 @@ ier = self._exec_plan(c, fk, self.plan)
 ## License
 
 See the [LICENSE file](https://github.com/albangossard/Bindings-NUFFT-pytorch)
+
+## Some technical material for debugging
+
+These bindings are especially used in MRI for the optimization of the sampling locations (see [1,2] for example of such projects that use this library).
+In this kind of project we need to differentiate sequences of operations that rely on Non-uniform Fourier Transforms with respect to the frequencies.
+Instead of differentiating all the operations involved in the computation of the NUFFT, the codes in this repository use an explicit differentiation. See [3] for more information.
+
+- [1] A. Gossard, F. de Gournay and P. Weiss. Off-the-grid data-driven optimization of sampling schemes in MRI. In international Traveling Work-shop on Interactions between low-complexity data models and Sensing Techniques (iTWIST) 2020. [PDF](https://arxiv.org/pdf/2010.01817.pdf)
+- [2] A. Gossard, F. de Gournay and P. Weiss. Bayesian Optimization of Sampling Densities in MRI. arXiv preprint arXiv:2209.07170, 2022. [PDF](https://arxiv.org/pdf/2209.07170.pdf)
+- [3] G. Wang and J. A. Fessler. Efficient Approximation of Jacobian Matrices Involving a Non-Uniform Fast Fourier Transform (NUFFT), in IEEE Transactions on Computational Imaging, vol. 9, pp. 43-54, 2023. [PDF](https://arxiv.org/pdf/2111.02912.pdf)
