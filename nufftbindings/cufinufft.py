@@ -1,16 +1,35 @@
 # Author: Alban Gossard
-# Last modification: 2021/22/09
+# Last modification: 2023/16/08
 
 import numpy as np
+
+# Use pycuda.autoprimaryctx to have the same CUDA context as for pytorch
+# and avoid the trick that consists in changing the sources of cuFINUFFT
+# import pycuda.autoinit
+import pycuda.autoprimaryctx
+import pycuda.driver as drv
+
 import torch
-import pycuda.autoinit
-from pycuda.gpuarray import to_gpu
 from cufinufft import cufinufft
 from nufftbindings.basenufft import *
 
-# Note: in order for cuFINUFFT to work with pytorch tensor (and not GPUArray from pycuda), we have to do the following changes in the 'execute' method in lib/python3.XX/site-packages/cufinufft/cufinufft.py:
-# Comment the test ```if not c.dtype == fk.dtype == self.complex_dtype:```
-# Replace c.ptr by c and fk.ptr by fk in ier = self._exec_plan(c.ptr, fk.ptr, self.plan)
+
+class Holder(drv.PointerHolderBase):
+    # Refer to https://gist.github.com/szagoruyko/440c561f7fce5f1b20e6154d801e6033
+    def __init__(self, t):
+        super(Holder, self).__init__()
+        self.t = t
+        self.gpudata = t.data_ptr()
+        self.dtype = {
+                torch.float32: np.float32,
+                torch.float64: np.float64,
+                torch.complex64: np.complex64,
+                torch.complex128: np.complex128,
+            }[t.dtype]
+        self.size = np.prod(t.shape)
+        self.ptr = self.gpudata
+    def get_pointer(self):
+        return self.t.data_ptr()
 
 
 class Nufft(baseNUFFT):
@@ -36,7 +55,7 @@ class Nufft(baseNUFFT):
         self.plan_adjoint_batch = None
 
     def precompute(self, xi):
-        xinp = xi.detach().cpu().numpy()
+        xinp = xi.detach()
 
         if self.plan_forward is not None:
             del self.plan_forward
@@ -49,20 +68,20 @@ class Nufft(baseNUFFT):
             self.plan_forward_batch = cufinufft(2, (self.nx, self.ny), self.Nbatch, eps=self.eps, dtype=self.np_dtype)
             self.plan_adjoint_batch = cufinufft(1, (self.nx, self.ny), self.Nbatch, eps=self.eps, dtype=self.np_dtype)
 
-            self.plan_forward.set_pts(to_gpu(xinp[:,0].astype(self.np_dtype)), to_gpu(xinp[:,1].astype(self.np_dtype)))
-            self.plan_adjoint.set_pts(to_gpu(xinp[:,0].astype(self.np_dtype)), to_gpu(xinp[:,1].astype(self.np_dtype)))
-            self.plan_forward_batch.set_pts(to_gpu(xinp[:,0].astype(self.np_dtype)), to_gpu(xinp[:,1].astype(self.np_dtype)))
-            self.plan_adjoint_batch.set_pts(to_gpu(xinp[:,0].astype(self.np_dtype)), to_gpu(xinp[:,1].astype(self.np_dtype)))
+            self.plan_forward.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)))
+            self.plan_adjoint.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)))
+            self.plan_forward_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)))
+            self.plan_adjoint_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)))
         elif self.ndim==3:
-            self.plan_forward = cufinufft(2, (self.nx, self.ny, self.nz), 1, eps=self.eps, dtype=self.np_dtype)
-            self.plan_adjoint = cufinufft(1, (self.nx, self.ny, self.nz), 1, eps=self.eps, dtype=self.np_dtype)
-            self.plan_forward_batch = cufinufft(2, (self.nx, self.ny, self.nz), self.Nbatch, eps=self.eps, dtype=self.np_dtype)
-            self.plan_adjoint_batch = cufinufft(1, (self.nx, self.ny, self.nz), self.Nbatch, eps=self.eps, dtype=self.np_dtype)
+            self.plan_forward = cufinufft(2, (self.nx, self.ny, self.nz), 1, eps=self.eps, dtype=self.torch_dtype)
+            self.plan_adjoint = cufinufft(1, (self.nx, self.ny, self.nz), 1, eps=self.eps, dtype=self.torch_dtype)
+            self.plan_forward_batch = cufinufft(2, (self.nx, self.ny, self.nz), self.Nbatch, eps=self.eps, dtype=self.torch_dtype)
+            self.plan_adjoint_batch = cufinufft(1, (self.nx, self.ny, self.nz), self.Nbatch, eps=self.eps, dtype=self.torch_dtype)
 
-            self.plan_forward.set_pts(to_gpu(xinp[:,0].astype(self.np_dtype)), to_gpu(xinp[:,1].astype(self.np_dtype)), to_gpu(xinp[:,2].astype(self.np_dtype)))
-            self.plan_adjoint.set_pts(to_gpu(xinp[:,0].astype(self.np_dtype)), to_gpu(xinp[:,1].astype(self.np_dtype)), to_gpu(xinp[:,2].astype(self.np_dtype)))
-            self.plan_forward_batch.set_pts(to_gpu(xinp[:,0].astype(self.np_dtype)), to_gpu(xinp[:,1].astype(self.np_dtype)), to_gpu(xinp[:,2].astype(self.np_dtype)))
-            self.plan_adjoint_batch.set_pts(to_gpu(xinp[:,0].astype(self.np_dtype)), to_gpu(xinp[:,1].astype(self.np_dtype)), to_gpu(xinp[:,2].astype(self.np_dtype)))
+            self.plan_forward.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)), Holder(xinp[:,2].type(self.torch_dtype)))
+            self.plan_adjoint.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)), Holder(xinp[:,2].type(self.torch_dtype)))
+            self.plan_forward_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)), Holder(xinp[:,2].type(self.torch_dtype)))
+            self.plan_adjoint_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)), Holder(xinp[:,2].type(self.torch_dtype)))
 
         self.xiprecomputed = xi.clone()
 
@@ -82,9 +101,9 @@ class Nufft(baseNUFFT):
                 y = torch.zeros(Nbatch, self.K, 2, device=self.device, dtype=self.torch_dtype)
                 fcpx = f.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_forward.execute(y.data_ptr(), fcpx.data_ptr())
+                self.plan_forward.execute(Holder(y), Holder(fcpx))
             else:
-                self.plan_forward_batch.execute(y.data_ptr(), fcpx.data_ptr())
+                self.plan_forward_batch.execute(Holder(y), Holder(fcpx))
             return y
         else:
             raise Exception("Error: f should have 4 dimensions (one axis for real/imaginary parts) or 3 dimensions (complex)")
@@ -102,9 +121,9 @@ class Nufft(baseNUFFT):
                 f = torch.zeros(Nbatch, self.nx, self.ny, 2, device=self.device, dtype=self.torch_dtype)
                 ycpx = y.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_adjoint.execute(ycpx.data_ptr(), f.data_ptr())
+                self.plan_adjoint.execute(Holder(ycpx), Holder(f))
             else:
-                self.plan_adjoint_batch.execute(ycpx.data_ptr(), f.data_ptr())
+                self.plan_adjoint_batch.execute(Holder(ycpx), Holder(f))
             return f
         else:
             raise Exception("Error: y should have 3 dimensions (one axis for real/imaginary parts) or 2 dimensions (complex)")
@@ -131,9 +150,9 @@ class Nufft(baseNUFFT):
                 tmp = torch.zeros(Nbatch, self.K, 2, device=self.device, dtype=self.torch_dtype)
                 vec_fx = vec_fx.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_forward.execute(tmp.data_ptr(), vec_fx.data_ptr())
+                self.plan_forward.execute(Holder(tmp), Holder(vec_fx))
             else:
-                self.plan_forward_batch.execute(tmp.data_ptr(), vec_fx.data_ptr())
+                self.plan_forward_batch.execute(Holder(tmp), Holder(vec_fx))
 
             if iscpx:
                 grad[:,0] = ( torch.mul(tmp.imag, g.real) - torch.mul(tmp.real, g.imag) ).sum(axis=0)
@@ -145,9 +164,9 @@ class Nufft(baseNUFFT):
             else:
                 vec_fy = vec_fy.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_forward.execute(tmp.data_ptr(), vec_fy.data_ptr())
+                self.plan_forward.execute(Holder(tmp), Holder(vec_fy))
             else:
-                self.plan_forward_batch.execute(tmp.data_ptr(), vec_fy.data_ptr())
+                self.plan_forward_batch.execute(Holder(tmp), Holder(vec_fy))
 
             if iscpx:
                 grad[:,1] = ( torch.mul(tmp.imag, g.real) - torch.mul(tmp.real, g.imag) ).sum(axis=0)
@@ -181,9 +200,9 @@ class Nufft(baseNUFFT):
                 tmp = torch.zeros(Nbatch, self.K, 2, device=self.device, dtype=self.torch_dtype)
                 vecx_grad_output = vecx_grad_output.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_forward.execute(tmp.data_ptr(), vecx_grad_output.data_ptr())
+                self.plan_forward.execute(Holder(tmp), Holder(vecx_grad_output))
             else:
-                self.plan_forward_batch.execute(tmp.data_ptr(), vecx_grad_output.data_ptr())
+                self.plan_forward_batch.execute(Holder(tmp), Holder(vecx_grad_output))
 
             if iscpx:
                 grad[:,0] = ( torch.mul(tmp.imag, y.real) - torch.mul(tmp.real, y.imag) ).sum(axis=0)
@@ -195,9 +214,9 @@ class Nufft(baseNUFFT):
             else:
                 vecy_grad_output = vecy_grad_output.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_forward.execute(tmp.data_ptr(), vecy_grad_output.data_ptr())
+                self.plan_forward.execute(Holder(tmp), Holder(vecy_grad_output))
             else:
-                self.plan_forward_batch.execute(tmp.data_ptr(), vecy_grad_output.data_ptr())
+                self.plan_forward_batch.execute(Holder(tmp), Holder(vecy_grad_output))
 
             if iscpx:
                 grad[:,1] = ( torch.mul(tmp.imag, y.real) - torch.mul(tmp.real, y.imag) ).sum(axis=0)
@@ -217,9 +236,9 @@ class Nufft(baseNUFFT):
             y = torch.zeros(Nbatch, self.K, 2, device=self.device, dtype=self.torch_dtype)
             fcpx = f.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_forward.execute(y.data_ptr(), fcpx.data_ptr())
+                self.plan_forward.execute(Holder(y), Holder(fcpx))
             else:
-                self.plan_forward_batch.execute(y.data_ptr(), fcpx.data_ptr())
+                self.plan_forward_batch.execute(Holder(y), Holder(fcpx))
             return y
         else:
             raise Exception("Error: f should have 5 dimensions")
@@ -232,9 +251,9 @@ class Nufft(baseNUFFT):
             f = torch.zeros(Nbatch, self.nx, self.ny, self.nz, 2, device=self.device, dtype=self.torch_dtype)
             ycpx = y.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_adjoint.execute(ycpx.data_ptr(), f.data_ptr())
+                self.plan_adjoint.execute(Holder(ycpx), Holder(f))
             else:
-                self.plan_adjoint_batch.execute(ycpx.data_ptr(), f.data_ptr())
+                self.plan_adjoint_batch.execute(Holder(ycpx), Holder(f))
             return f
         else:
             raise Exception("Error: y should have 3 dimensions")
@@ -253,25 +272,25 @@ class Nufft(baseNUFFT):
             tmp = torch.zeros(Nbatch, self.K, 3, device=self.device, dtype=self.torch_dtype)
             vec_fx = vec_fx.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_forward.execute(tmp.data_ptr(), vec_fx.data_ptr())
+                self.plan_forward.execute(Holder(tmp), Holder(vec_fx))
             else:
-                self.plan_forward_batch.execute(tmp.data_ptr(), vec_fx.data_ptr())
+                self.plan_forward_batch.execute(Holder(tmp), Holder(vec_fx))
 
             grad[:,0] = ( torch.mul(tmp[...,1], g[...,0]) - torch.mul(tmp[...,0], g[...,1]) ).sum(axis=0)
 
             vec_fy = vec_fy.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_forward.execute(tmp.data_ptr(), vec_fy.data_ptr())
+                self.plan_forward.execute(Holder(tmp), Holder(vec_fy))
             else:
-                self.plan_forward_batch.execute(tmp.data_ptr(), vec_fy.data_ptr())
+                self.plan_forward_batch.execute(Holder(tmp), Holder(vec_fy))
 
             grad[:,1] = ( torch.mul(tmp[...,1], g[...,0]) - torch.mul(tmp[...,0], g[...,1]) ).sum(axis=0)
 
             vec_fz = vec_fz.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_forward.execute(tmp.data_ptr(), vec_fz.data_ptr())
+                self.plan_forward.execute(Holder(tmp), Holder(vec_fz))
             else:
-                self.plan_forward_batch.execute(tmp.data_ptr(), vec_fz.data_ptr())
+                self.plan_forward_batch.execute(Holder(tmp), Holder(vec_fz))
 
             grad[:,2] = ( torch.mul(tmp[...,1], g[...,0]) - torch.mul(tmp[...,0], g[...,1]) ).sum(axis=0)
 
@@ -294,25 +313,25 @@ class Nufft(baseNUFFT):
             tmp = torch.zeros(Nbatch, self.K, 3, device=self.device, dtype=self.torch_dtype)
             vecx_grad_output = vecx_grad_output.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_forward.execute(tmp.data_ptr(), vecx_grad_output.data_ptr())
+                self.plan_forward.execute(Holder(tmp), Holder(vecx_grad_output))
             else:
-                self.plan_forward_batch.execute(tmp.data_ptr(), vecx_grad_output.data_ptr())
+                self.plan_forward_batch.execute(Holder(tmp), Holder(vecx_grad_output))
 
             grad[:,0] = ( torch.mul(tmp[...,1], y[...,0]) - torch.mul(tmp[...,0], y[...,1]) ).sum(axis=0)
 
             vecy_grad_output = vecy_grad_output.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_forward.execute(tmp.data_ptr(), vecy_grad_output.data_ptr())
+                self.plan_forward.execute(Holder(tmp), Holder(vecy_grad_output))
             else:
-                self.plan_forward_batch.execute(tmp.data_ptr(), vecy_grad_output.data_ptr())
+                self.plan_forward_batch.execute(Holder(tmp), Holder(vecy_grad_output))
 
             grad[:,1] = ( torch.mul(tmp[...,1], y[...,0]) - torch.mul(tmp[...,0], y[...,1]) ).sum(axis=0)
 
             vecz_grad_output = vecz_grad_output.type(self.torch_dtype).contiguous()
             if Nbatch==1:
-                self.plan_forward.execute(tmp.data_ptr(), vecz_grad_output.data_ptr())
+                self.plan_forward.execute(Holder(tmp), Holder(vecz_grad_output))
             else:
-                self.plan_forward_batch.execute(tmp.data_ptr(), vecz_grad_output.data_ptr())
+                self.plan_forward_batch.execute(Holder(tmp), Holder(vecz_grad_output))
 
             grad[:,2] = ( torch.mul(tmp[...,1], y[...,0]) - torch.mul(tmp[...,0], y[...,1]) ).sum(axis=0)
 

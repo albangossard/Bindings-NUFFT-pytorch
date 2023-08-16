@@ -60,19 +60,7 @@ The codes were tested with the following configuration:
 - cuFINUFFT 1.2
 - torchkbnufft 1.2.0
 
-**Note**: The cuFINUFFT library is designed to work with `pycuda`. It can be easily modified to support pytorch. Just replace the following lines in the `cufinufft.py` file:
-```python
-if not c.dtype == fk.dtype == self.complex_dtype:
-    raise TypeError("cufinufft execute expects {} dtype arguments "
-                    "for this plan. Check plan and arguments.".format(
-                        self.complex_dtype))
-
-ier = self._exec_plan(c.ptr, fk.ptr, self.plan)
-```
-by
-```python
-ier = self._exec_plan(c, fk, self.plan)
-```
+**Note**: This repository was previously using a hack of the cuFINUFFT library to avoid pycuda/pytorch transfers. This is no longer required and the memory leak has been fixed.
 
 ## License
 
