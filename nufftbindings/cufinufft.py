@@ -29,7 +29,7 @@ class Holder(drv.PointerHolderBase):
         self.size = np.prod(t.shape)
         self.ptr = self.gpudata
     def get_pointer(self):
-        return self.t.data_ptr()
+        return self.gpudata
 
 
 class Nufft(baseNUFFT):
@@ -55,7 +55,7 @@ class Nufft(baseNUFFT):
         self.plan_adjoint_batch = None
 
     def precompute(self, xi):
-        xinp = xi.detach()
+        xinp = xi.detach().contiguous()
 
         if self.plan_forward is not None:
             del self.plan_forward
@@ -68,20 +68,20 @@ class Nufft(baseNUFFT):
             self.plan_forward_batch = cufinufft(2, (self.nx, self.ny), self.Nbatch, eps=self.eps, dtype=self.np_dtype)
             self.plan_adjoint_batch = cufinufft(1, (self.nx, self.ny), self.Nbatch, eps=self.eps, dtype=self.np_dtype)
 
-            self.plan_forward.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)))
-            self.plan_adjoint.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)))
-            self.plan_forward_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)))
-            self.plan_adjoint_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)))
+            self.plan_forward.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()))
+            self.plan_adjoint.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()))
+            self.plan_forward_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()))
+            self.plan_adjoint_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()))
         elif self.ndim==3:
             self.plan_forward = cufinufft(2, (self.nx, self.ny, self.nz), 1, eps=self.eps, dtype=self.torch_dtype)
             self.plan_adjoint = cufinufft(1, (self.nx, self.ny, self.nz), 1, eps=self.eps, dtype=self.torch_dtype)
             self.plan_forward_batch = cufinufft(2, (self.nx, self.ny, self.nz), self.Nbatch, eps=self.eps, dtype=self.torch_dtype)
             self.plan_adjoint_batch = cufinufft(1, (self.nx, self.ny, self.nz), self.Nbatch, eps=self.eps, dtype=self.torch_dtype)
 
-            self.plan_forward.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)), Holder(xinp[:,2].type(self.torch_dtype)))
-            self.plan_adjoint.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)), Holder(xinp[:,2].type(self.torch_dtype)))
-            self.plan_forward_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)), Holder(xinp[:,2].type(self.torch_dtype)))
-            self.plan_adjoint_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype)), Holder(xinp[:,1].type(self.torch_dtype)), Holder(xinp[:,2].type(self.torch_dtype)))
+            self.plan_forward.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()), Holder(xinp[:,2].type(self.torch_dtype).contiguous()))
+            self.plan_adjoint.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()), Holder(xinp[:,2].type(self.torch_dtype).contiguous()))
+            self.plan_forward_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()), Holder(xinp[:,2].type(self.torch_dtype).contiguous()))
+            self.plan_adjoint_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()), Holder(xinp[:,2].type(self.torch_dtype).contiguous()))
 
         self.xiprecomputed = xi.clone()
 
