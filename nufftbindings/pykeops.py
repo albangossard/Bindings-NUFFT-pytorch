@@ -4,7 +4,7 @@
 import torch
 from pykeops.torch import LazyTensor, ComplexLazyTensor
 # from pykeops import IntCst, Imag2Complex
-from nufftbindings.basenufft import *
+from .basenufft import *
 
 
 class Nufft(baseNUFFT):

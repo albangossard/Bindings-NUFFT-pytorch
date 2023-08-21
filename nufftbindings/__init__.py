@@ -1,1 +1,1 @@
-from nufftbindings.basenufft import *
+from .basenufft import *

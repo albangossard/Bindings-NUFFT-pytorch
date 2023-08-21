@@ -11,7 +11,7 @@ import pycuda.driver as drv
 
 import torch
 from cufinufft import cufinufft
-from nufftbindings.basenufft import *
+from .basenufft import *
 
 
 class Holder(drv.PointerHolderBase):

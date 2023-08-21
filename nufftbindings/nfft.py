@@ -4,7 +4,7 @@
 import numpy as np
 import torch
 from pynfft.nfft import NFFT
-from nufftbindings.basenufft import *
+from .basenufft import *
 
 
 class Nufft(baseNUFFT):

@@ -3,7 +3,7 @@
 
 import torch
 import torchkbnufft as tkbn
-from nufftbindings.basenufft import *
+from .basenufft import *
 
 
 class Nufft(baseNUFFT):
