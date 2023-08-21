@@ -55,7 +55,11 @@ class Nufft(baseNUFFT):
         self.plan_adjoint_batch = None
 
     def precompute(self, xi):
-        xinp = xi.detach().contiguous()
+        xic = xi.detach().contiguous()
+        xix = Holder(xic[:,0].type(self.torch_dtype).contiguous())
+        xiy = Holder(xic[:,1].type(self.torch_dtype).contiguous())
+        if self.ndim==3:
+            xiz = Holder(xic[:,2].type(self.torch_dtype).contiguous())
 
         if self.plan_forward is not None:
             del self.plan_forward
@@ -68,20 +72,20 @@ class Nufft(baseNUFFT):
             self.plan_forward_batch = cufinufft(2, (self.nx, self.ny), self.Nbatch, eps=self.eps, dtype=self.np_dtype)
             self.plan_adjoint_batch = cufinufft(1, (self.nx, self.ny), self.Nbatch, eps=self.eps, dtype=self.np_dtype)
 
-            self.plan_forward.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()))
-            self.plan_adjoint.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()))
-            self.plan_forward_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()))
-            self.plan_adjoint_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()))
+            self.plan_forward.set_pts(xix, xiy)
+            self.plan_adjoint.set_pts(xix, xiy)
+            self.plan_forward_batch.set_pts(xix, xiy)
+            self.plan_adjoint_batch.set_pts(xix, xiy)
         elif self.ndim==3:
             self.plan_forward = cufinufft(2, (self.nx, self.ny, self.nz), 1, eps=self.eps, dtype=self.torch_dtype)
             self.plan_adjoint = cufinufft(1, (self.nx, self.ny, self.nz), 1, eps=self.eps, dtype=self.torch_dtype)
             self.plan_forward_batch = cufinufft(2, (self.nx, self.ny, self.nz), self.Nbatch, eps=self.eps, dtype=self.torch_dtype)
             self.plan_adjoint_batch = cufinufft(1, (self.nx, self.ny, self.nz), self.Nbatch, eps=self.eps, dtype=self.torch_dtype)
 
-            self.plan_forward.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()), Holder(xinp[:,2].type(self.torch_dtype).contiguous()))
-            self.plan_adjoint.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()), Holder(xinp[:,2].type(self.torch_dtype).contiguous()))
-            self.plan_forward_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()), Holder(xinp[:,2].type(self.torch_dtype).contiguous()))
-            self.plan_adjoint_batch.set_pts(Holder(xinp[:,0].type(self.torch_dtype).contiguous()), Holder(xinp[:,1].type(self.torch_dtype).contiguous()), Holder(xinp[:,2].type(self.torch_dtype).contiguous()))
+            self.plan_forward.set_pts(xix, xiy, xiz)
+            self.plan_adjoint.set_pts(xix, xiy, xiz)
+            self.plan_forward_batch.set_pts(xix, xiy, xiz)
+            self.plan_adjoint_batch.set_pts(xix, xiy, xiz)
 
         self.xiprecomputed = xi.clone()
 
